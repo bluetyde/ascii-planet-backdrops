@@ -2,6 +2,10 @@
 
 Backdrops for the Claude desktop app: the Sun, the Moon and the planets drawn in ASCII glyphs, turning slowly behind the conversation.
 
+![The Sun backdrop behind a Claude conversation](docs/screenshots/sun.webp)
+
+![Earth's night side backdrop behind a Claude conversation](docs/screenshots/earth.webp)
+
 There are eight mods. Install **one** of them, because each one sets the app's theme and the last to set it wins.
 
 | Mod | Shows |
