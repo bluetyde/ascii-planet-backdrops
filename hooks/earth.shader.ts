@@ -8,7 +8,7 @@
 // tools/build-earth-data.mjs writes the block between the @generated markers.
 import {
   shader, table, buffer, picture, scene, values, vec2, vec3, vec4, int, signed,
-  floor, sqrt, sin, cos, atan, abs, max, min, mix, clamp, smoothstep, dot, pow, time, size, px, composer, PI,
+  floor, sqrt, sin, cos, atan, abs, max, min, mix, clamp, smoothstep, dot, pow, time, size, composer, PI,
 } from 'claude-code/shader'
 import type { Buffer } from 'claude-code/shader'
 
@@ -40,10 +40,10 @@ const URBAN = vec3(0.58, 0.52, 0.42)
 const RIM = vec3(0.31, 0.561, 0.878)
 const STAR = vec3(0.541, 0.576, 0.651)
 
-// the dot size: a whole number of pixels, about 1.5 points, so cells never leave seams
-function dotPx(): number {
-  return max(1, floor(1.5 / px + 0.5))
-}
+// a character cell is 6 x 9 dots of 1.5 points, fixed in points: a buffer's own `px` is its texel, not the screen's
+// pixel, so both passes size cells in points to agree (each pixel picks its own dot, so cells leave no seams)
+const DOT = 1.5
+const CELL = vec2(6 * DOT, 9 * DOT)
 
 const GLYPHS: Buffer = buffer({ size: [5 * (LEVELS + 1), 7], filter: 'nearest', once: true }, p => {
   const g = floor(p.cell.x / 5)
@@ -71,11 +71,10 @@ function starHash(x: number, y: number): number {
   return signed((h ^ (h >>> 16)) & 65535) / 65536
 }
 
-// one texel a character cell: a cell is at least 7 points wide (6 dots of 1.2 points or more), so a texel every 6 points
-// leaves texels to spare at the right and top, which nothing reads
+// one texel a character cell: cells are 9 points wide, so a texel every 6 points leaves texels to spare at the right and
+// top, which nothing reads
 const CELLS: Buffer = buffer({ scale: 1 / 6, filter: 'nearest' }, p => {
-  const d = dotPx()
-  const at = vec2((p.cell + 0.5) * vec2(6 * d, 9 * d) * px)
+  const at = vec2((p.cell + 0.5) * CELL)
 
   // the globe right of the middle (on top in portrait), clear of the message box
   const wide = size.x > size.y * 1.1
@@ -156,10 +155,8 @@ const CELLS: Buffer = buffer({ scale: 1 / 6, filter: 'nearest' }, p => {
 })
 
 const sky = picture(p => {
-  const d = dotPx()
-  const cs = vec2(6 * d, 9 * d)
-  const cell = vec2(floor(p.pixel / cs))
-  const dots = vec2(floor((p.pixel - cell * cs) / d))
+  const cell = vec2(floor(p.point / CELL))
+  const dots = vec2(floor((p.point - cell * CELL) / DOT))
   const m = CELLS.at(cell)
   const g = floor(m.a * 15 + 0.5)
   // the glyph's 5 x 7 bitmap, row 0 at the top, in the cell's dots 0-4 across and 1-7 down (dots run up from the bottom)
