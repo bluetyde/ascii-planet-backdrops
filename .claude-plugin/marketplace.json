@@ -1,0 +1,5 @@
+{
+  "name": "ascii-earth-backdrop",
+  "owner": { "name": "bluetyde" },
+  "plugins": [{ "name": "ascii-earth", "source": "./" }]
+}

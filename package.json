@@ -1,0 +1,15 @@
+{
+  "name": "ascii-earth-backdrop",
+  "version": "0.2.0",
+  "private": true,
+  "description": "Build tools for the ascii-earth Claude desktop backdrop mod",
+  "type": "module",
+  "scripts": {
+    "build": "node tools/build-earth-data.mjs"
+  },
+  "devDependencies": {
+    "playwright-core": "^1.49.0",
+    "sharp": "^0.34.0"
+  },
+  "license": "MIT"
+}

@@ -1,0 +1,7 @@
+{
+  "name": "ascii-earth",
+  "version": "0.2.0",
+  "description": "A backdrop of Earth drawn in ASCII glyphs, slowly turning, lit by the real sun, with city lights at night",
+  "author": { "name": "bluetyde" },
+  "license": "MIT"
+}
