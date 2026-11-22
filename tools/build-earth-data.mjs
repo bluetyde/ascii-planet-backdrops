@@ -96,8 +96,15 @@ for (let it = 0; it < 15; it++) {
 centers = centers.map(([r, g, b]) => {
   if (b > r + 0.06 && b > g) b = Math.max(r, g) + 0.02;
   if (r > 0.82 && b < 0.17) b = 0.2;
-  return [r, g, b];
+  return [r, g, b].map(v => Math.round(v * 255) / 255);   // whole 8-bit steps: the shader's palette table holds them as ints
 });
+// darkest first, so a sample that lands between two neighbouring indices reads a similar colour
+{
+  const order = centers.map((c, i) => i).sort((p, q) => (centers[p][0] + centers[p][1] + centers[p][2]) - (centers[q][0] + centers[q][1] + centers[q][2]));
+  const remap = new Int16Array(K); order.forEach((old, i) => { remap[old] = i; });
+  centers = order.map(i => centers[i]);
+  for (let k = 0; k < assign.length; k++) if (assign[k] >= 0) assign[k] = remap[assign[k]];
+}
 
 // ---------------------------------------------------------------- lights: Black Marble, the warm bright pixels of each cell
 const blackMeta = await sharp(BLACK).metadata();
@@ -169,18 +176,24 @@ console.log('ramp:', ramp.map(g => g.c).join(''), ramp.map(g => g.ink).join(' ')
 const starOf = c => Math.max(1, 1 + ramp.findIndex(g => g.c === c));
 
 // ---------------------------------------------------------------- the faint map's box in the Svg, as fractions of the window (y down)
-const MAP = { x: 0.015, y: 0.03, w: 0.3, h: 0.24, alpha: 0.2 };
+const MAP = { x: 0.015, y: 0.03, w: 0.3, h: 0.24 };
+// The map is drawn in index colours a step or two off the backdrop's own black, so no one sees it, even where the shader is not
+// playing. Index i is red 5 + 2 (i & 3), green 7 + 2 (i >> 2), blue 13 (of 255): 0 the sea (the backdrop exactly), 1 to K the
+// land palette, K + 1 and K + 2 the dim and bright city lights. The shader reads the index back and looks its colour up.
+const CITY_DIM_INDEX = K + 1, CITY_BRIGHT_INDEX = K + 2;
+const mapIndex = k => lights[k] === 2 ? CITY_BRIGHT_INDEX : lights[k] === 1 ? CITY_DIM_INDEX : isLand(k) ? 1 + assign[k] : 0;
+const indexColor = i => '#' + [5 + 2 * (i & 3), 7 + 2 * (i >> 2), 13].map(v => v.toString(16).padStart(2, '0')).join('');
 const SPACE = '#05070d';
 const hex = ([r, g, b]) => '#' + [r, g, b].map(v => Math.round(Math.min(1, Math.max(0, v)) * 15).toString(16)).join('');   // #rgb: 16 steps a channel
 // one path a colour, one horizontal run of cells a subpath, stroked 1 cell high
 function mapSvg() {
-  const runs = new Map(), sea = hex(SEA_RGB);
+  const runs = new Map(), sea = indexColor(0);
   for (let y = 0; y < ROWS; y++) {
     let x = 0;
     while (x < COLS) {
-      const col = hex(mapRGB(y * COLS + x));
+      const col = indexColor(mapIndex(y * COLS + x));
       let e = x + 1;
-      while (e < COLS && hex(mapRGB(y * COLS + e)) === col) e++;
+      while (e < COLS && indexColor(mapIndex(y * COLS + e)) === col) e++;
       if (col !== sea) {
         if (!runs.has(col)) runs.set(col, { d: '', y: -1, end: 0 });
         const r = runs.get(col);
@@ -191,9 +204,9 @@ function mapSvg() {
     }
   }
   let s = `<svg x="${MAP.x * 100}%" y="${MAP.y * 100}%" width="${MAP.w * 100}%" height="${MAP.h * 100}%" viewBox="0 0 ${COLS} ${ROWS}" preserveAspectRatio="none">`
-    + `<g opacity="${MAP.alpha}"><rect width="${COLS}" height="${ROWS}" fill="${sea}"/>`;
+    + `<rect width="${COLS}" height="${ROWS}" fill="${sea}"/>`;
   for (const [col, r] of runs) s += `<path fill="none" stroke="${col}" d="${r.d}"/>`;
-  return s + '</g></svg>';
+  return s + '</svg>';
 }
 
 // ---------------------------------------------------------------- the still globe: the shader's look, at a fixed moment
@@ -262,6 +275,7 @@ const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="100%" height="100%">
   + `<rect width="100%" height="100%" fill="${SPACE}"/>` + mapPart
   + `<svg width="100%" height="100%" viewBox="0 0 ${VW} ${VH}" preserveAspectRatio="xMidYMid meet">`
   + `<style>text{font-family:monospace;font-size:${CH}px;white-space:pre}</style>` + globe + '</svg></svg>';
+assert(indexColor(0) === SPACE && new Set(Array.from({ length: 16 }, (_, i) => indexColor(i))).size === 16, 'map index colours are distinct and the sea is the backdrop');
 assert(svg.length < 131072, `Svg is ${svg.length} characters (cap 131072): map ${mapPart.length}, globe ${globe.length}`);
 
 // ---------------------------------------------------------------- write
@@ -274,7 +288,9 @@ const block = [
   `const LEVELS = ${ramp.length}`,
   `const STAR_DOT = ${starOf('.')}`,
   `const STAR_PLUS = ${starOf('+')}`,
-  `const MAP_X = ${MAP.x}, MAP_Y = ${MAP.y}, MAP_W = ${MAP.w}, MAP_H = ${MAP.h}, MAP_ALPHA = ${MAP.alpha}   // the faint map's box (y down)`,
+  `const MAP_X = ${MAP.x}, MAP_Y = ${MAP.y}, MAP_W = ${MAP.w}, MAP_H = ${MAP.h}   // the index map's box (y down)`,
+  `const PALETTE = table([${Array.from({ length: 16 }, (_, i) => i >= 1 && i <= K ? '[' + centers[i - 1].map(v => Math.round(v * 255)).join(',') + ']' : '[0,0,0]').join(',')}], 'int')   // land colours by index`,
+  `const CITY_DIM_INDEX = ${CITY_DIM_INDEX}, CITY_BRIGHT_INDEX = ${CITY_BRIGHT_INDEX}`,
   `const MAP_COLS = ${COLS}, MAP_ROWS = ${ROWS}`,
   END,
 ].join('\n');

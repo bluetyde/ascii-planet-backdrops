@@ -22,7 +22,9 @@ const GLYPH = table([[0,0],[134217728,0],[-2013265920,0],[458752,0],[-2009067520
 const LEVELS = 12
 const STAR_DOT = 1
 const STAR_PLUS = 6
-const MAP_X = 0.015, MAP_Y = 0.03, MAP_W = 0.3, MAP_H = 0.24, MAP_ALPHA = 0.2   // the faint map's box (y down)
+const MAP_X = 0.015, MAP_Y = 0.03, MAP_W = 0.3, MAP_H = 0.24   // the index map's box (y down)
+const PALETTE = table([[0,0,0],[40,58,14],[56,72,21],[74,83,35],[100,96,55],[137,120,82],[150,150,147],[191,162,117],[182,179,173],[228,209,177],[248,247,240],[0,0,0],[0,0,0],[0,0,0],[0,0,0],[0,0,0]], 'int')   // land colours by index
+const CITY_DIM_INDEX = 11, CITY_BRIGHT_INDEX = 12
 const MAP_COLS = 360, MAP_ROWS = 180
 // @generated end
 
@@ -53,12 +55,20 @@ const GLYPHS: Buffer = buffer({ size: [5 * (LEVELS + 1), 7], filter: 'nearest', 
   return vec4(signed(on), 0, 0, 1)
 })
 
-// the faint map in the Svg, decoded back to full colour: the scene shows it at MAP_ALPHA over SPACE
-function mapColor(lat: number, lon: number): vec3 {
-  const fx = clamp(lon / (2 * PI) + 0.5, 0.5 / MAP_COLS, 1 - 0.5 / MAP_COLS)
-  const fy = clamp(0.5 - lat / PI, 0.5 / MAP_ROWS, 1 - 0.5 / MAP_ROWS)
+// the index the Svg's map holds at a latitude and longitude (radians), read at the middle of its map cell so neighbours
+// don't blend: red 5 + 2 (i & 3), green 7 + 2 (i >> 2), of 255 (0 the sea, 1 to K land, then the two city lights)
+function mapIndex(lat: number, lon: number): number {
+  const fx = (min(floor((lon / (2 * PI) + 0.5) * MAP_COLS), MAP_COLS - 1) + 0.5) / MAP_COLS
+  const fy = (clamp(floor((0.5 - lat / PI) * MAP_ROWS), 0, MAP_ROWS - 1) + 0.5) / MAP_ROWS
   const s = scene.sample(vec2(MAP_X + fx * MAP_W, 1 - (MAP_Y + fy * MAP_H)))
-  return vec3(clamp((vec3(s.rgb) - SPACE * (1 - MAP_ALPHA)) / MAP_ALPHA, 0, 1))
+  const lo = clamp(floor((s.r * 255 - 5) / 2 + 0.5), 0, 3)
+  const hi = clamp(floor((s.g * 255 - 7) / 2 + 0.5), 0, 3)
+  return lo + 4 * hi
+}
+
+function paletteColor(i: number): vec3 {
+  const c = PALETTE.at(i)
+  return vec3(signed(c[0]) / 255, signed(c[1]) / 255, signed(c[2]) / 255)
 }
 
 function level(b: number): number {
@@ -96,12 +106,11 @@ const CELLS: Buffer = buffer({ scale: 1 / 6, filter: 'nearest' }, p => {
     const nz = q.x * sin(spin) + z1 * cos(spin)
     const lat = atan(y1, sqrt(nx * nx + nz * nz))
     const lon = atan(-nz, nx)
-    const c = mapColor(lat, lon)
-
-    // what the map's colour is: a city mark (red full, no blue), the sea (blue over red and green), or land
-    const city = c.r > 0.85 && c.b < 0.15
-    const sea = !city && c.b > c.r + 0.08 && c.b > c.g
-    const bright = city && c.g > 0.68
+    const idx = mapIndex(lat, lon)
+    const city = idx > CITY_DIM_INDEX - 0.5
+    const sea = idx < 0.5
+    const bright = idx > CITY_BRIGHT_INDEX - 0.5
+    const c = paletteColor(idx)
 
     // the sun, from the subsolar point (a point at latitude a, longitude o is (cos a cos o, sin a, -cos a sin o))
     const sLat = v.sunLat * PI / 180

@@ -36,7 +36,7 @@ The backdrop draws in the desktop and mobile apps. The terminal and editors draw
 The mod sets a theme at session start and draws the backdrop as a GPU shader (`hooks/earth.shader.ts`) over an SVG (`hooks/scene.ts`).
 
 **The SVG** holds two things:
-- **A faint world map** in a fixed box at the top left. It is 360 × 180 cells, one a degree: land colours from Blue Marble, city lights from Black Marble 2016, and coastlines from Natural Earth's 1:50m land. The shader reads its colours back, so the globe gets far more detail than the shader's own 16 kbit data cap allows.
+- **A world map** in a fixed box at the top left, drawn in index colours a step or two off the backdrop's black, so nobody sees it. It is 360 × 180 cells, one a degree: land colours from Blue Marble, city lights from Black Marble 2016, and coastlines from Natural Earth's 1:50m land. The shader reads each cell's index back and looks its colour up in a small palette, so the globe gets far more detail than the shader's own 16 kbit data cap allows.
 - **A still ASCII globe**, shown wherever the shader does not play (the mobile app, Reduce Motion).
 
 **The shader** runs three passes:
@@ -44,7 +44,7 @@ The mod sets a theme at session start and draws the backdrop as a GPU shader (`h
 2. **Cells.** Once per character cell, it projects the cell onto the turning sphere, reads the map, and works out the lighting. City lights are shown only on the night side. A soft glint marks the sea where the sun is nearly overhead.
 3. **Picture.** For each pixel, it reads its cell and the glyph's dot.
 
-Cells are a whole number of pixels on every display, so there are no seams. The hook works out the point where the sun is overhead from the clock every two minutes, and the shader eases toward it.
+Cells are a fixed 9 × 13.5 points, and each pixel works out its own glyph dot, so there are no seams. The hook works out the point where the sun is overhead from the clock every two minutes, and the shader eases toward it.
 
 ## Rebuilding the data
 
