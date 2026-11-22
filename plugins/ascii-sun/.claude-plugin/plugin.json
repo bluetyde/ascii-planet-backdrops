@@ -1,0 +1,9 @@
+{
+  "name": "ascii-sun",
+  "version": "0.3.0",
+  "description": "A backdrop of the Sun drawn in ASCII glyphs, every day",
+  "author": {
+    "name": "bluetyde"
+  },
+  "license": "MIT"
+}

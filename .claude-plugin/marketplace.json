@@ -1,5 +1,41 @@
 {
-  "name": "ascii-earth-backdrop",
-  "owner": { "name": "bluetyde" },
-  "plugins": [{ "name": "ascii-earth", "source": "./" }]
+  "name": "ascii-planet-backdrops",
+  "owner": {
+    "name": "bluetyde"
+  },
+  "description": "Backdrops for the Claude desktop app: the Sun, the Moon and the planets drawn in ASCII glyphs, one a day or one always",
+  "plugins": [
+    {
+      "name": "ascii-week",
+      "source": "./plugins/ascii-week"
+    },
+    {
+      "name": "ascii-sun",
+      "source": "./plugins/ascii-sun"
+    },
+    {
+      "name": "ascii-moon",
+      "source": "./plugins/ascii-moon"
+    },
+    {
+      "name": "ascii-mars",
+      "source": "./plugins/ascii-mars"
+    },
+    {
+      "name": "ascii-mercury",
+      "source": "./plugins/ascii-mercury"
+    },
+    {
+      "name": "ascii-jupiter",
+      "source": "./plugins/ascii-jupiter"
+    },
+    {
+      "name": "ascii-earth",
+      "source": "./plugins/ascii-earth"
+    },
+    {
+      "name": "ascii-saturn",
+      "source": "./plugins/ascii-saturn"
+    }
+  ]
 }

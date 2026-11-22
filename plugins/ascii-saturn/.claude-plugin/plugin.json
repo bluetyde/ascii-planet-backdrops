@@ -1,0 +1,9 @@
+{
+  "name": "ascii-saturn",
+  "version": "0.3.0",
+  "description": "A backdrop of Saturn drawn in ASCII glyphs, every day",
+  "author": {
+    "name": "bluetyde"
+  },
+  "license": "MIT"
+}

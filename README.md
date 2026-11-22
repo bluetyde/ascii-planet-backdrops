@@ -1,19 +1,38 @@
-# ascii-earth-backdrop
+# ascii-planet-backdrops
 
-A backdrop for the Claude desktop app: Earth drawn in ASCII glyphs, turning slowly behind the conversation.
+Backdrops for the Claude desktop app: the Sun, the Moon and the planets drawn in ASCII glyphs, turning slowly behind the conversation.
 
-- The globe turns once every four minutes.
-- The lit half follows the real sun for the current time.
-- On the night side, cities glow amber, and night land stays apart from the near-black sea.
-- Daytime colours come from NASA's Blue Marble, and coastlines from Natural Earth.
-- Around the globe sits a dark navy look with still stars.
+There are eight mods. Install **one** of them, because each one sets the app's theme and the last to set it wins.
+
+| Mod | Shows |
+| --- | --- |
+| `ascii-week` | A body for each day of the week, switching at local midnight. `/world <body>` shows another body until the session ends. |
+| `ascii-sun` | The Sun, every day |
+| `ascii-moon` | The Moon, every day |
+| `ascii-mars` | Mars, every day |
+| `ascii-mercury` | Mercury, every day |
+| `ascii-jupiter` | Jupiter, every day |
+| `ascii-earth` | Earth, every day |
+| `ascii-saturn` | Saturn, every day |
+
+The week mod follows the old day names:
+
+| Day | Body | What it shows |
+| --- | --- | --- |
+| Sunday | Sun | Slowly churning granulation, small sunspots in the active belts, and a faint corona. The disc is brighter at the centre and darker toward the edge. |
+| Monday | Moon | Today's real phase. The near side faces you and rocks gently instead of spinning, and the dark side is faintly lit by earthshine. |
+| Tuesday | Mars | Rust and dark basalt, with white polar caps. |
+| Wednesday | Mercury | Grey-brown and cratered, under a harsh sun. |
+| Thursday | Jupiter | Cloud bands that drift at different speeds by latitude, and the Great Red Spot. |
+| Friday | Earth | Lit by the real sun for the current time. Cities glow on the night side, and the sea glints where the sun is overhead. |
+| Saturday | Saturn | Tilted rings with the Cassini Division. The planet's shadow falls across the rings, and the rings' shadow falls on the planet. The hexagon sits at the north pole. |
 
 ## Install
 
-At the prompt of a Claude Code terminal session:
+At the prompt of a Claude Code terminal session, with the mod you want:
 
 ```
-/plugin install ascii-earth --marketplace bluetyde/ascii-earth-backdrop
+/plugin install ascii-week --marketplace bluetyde/ascii-planet-backdrops
 ```
 
 Answer `y` to add the marketplace, then pick a scope.
@@ -21,40 +40,50 @@ Answer `y` to add the marketplace, then pick a scope.
 From a shell:
 
 ```
-claude plugin install ascii-earth --marketplace bluetyde/ascii-earth-backdrop
+claude plugin install ascii-week --marketplace bluetyde/ascii-planet-backdrops
 ```
 
 In the desktop app, where `/plugin` does not run:
 1. Click **+** next to the prompt box, then **Plugins**.
-2. Choose **Add marketplace** and enter `bluetyde/ascii-earth-backdrop`.
-3. Choose **Add plugin**.
+2. Choose **Add marketplace** and enter `bluetyde/ascii-planet-backdrops`.
+3. Choose **Add plugin** and pick one.
 
-The backdrop draws in the desktop and mobile apps. The terminal and editors draw no backdrop.
+The backdrops draw in the desktop and mobile apps. The terminal and editors draw no backdrop.
 
 ## How it works
 
-The mod sets a theme at session start and draws the backdrop as a GPU shader (`hooks/earth.shader.ts`) over an SVG (`hooks/scene.ts`).
+Each mod sets a theme at session start and draws its backdrop as a GPU shader (`hooks/<body>.shader.ts`) over an SVG.
 
 **The SVG** holds two things:
-- **A world map** in a fixed box at the top left, drawn in index colours a step or two off the backdrop's black, so nobody sees it. It is 360 × 180 cells, one a degree: land colours from Blue Marble, city lights from Black Marble 2016, and coastlines from Natural Earth's 1:50m land. The shader reads each cell's index back and looks its colour up in a small palette, so the globe gets far more detail than the shader's own 16 kbit data cap allows.
-- **A still ASCII globe**, shown wherever the shader does not play (the mobile app, Reduce Motion).
+- **The body's map**, for the bodies that have one. It sits in a fixed box at the top left, drawn in index colours only a step or two off the backdrop's black, so nobody sees it. The shader reads each cell's index back and looks its colour up in a palette of 16 or fewer colours. This gives the globe far more detail than the shader's own 16 kbit data limit would allow.
+- **A still ASCII picture of the body**, shown wherever the shader does not play (the mobile app, Reduce Motion).
 
 **The shader** runs three passes:
 1. **Glyphs.** It unpacks 5 × 7 bitmaps of a 12-step glyph ramp (`.,-;~+=*%$#@`), ordered by measured ink.
-2. **Cells.** Once per character cell, it projects the cell onto the turning sphere, reads the map, and works out the lighting. City lights are shown only on the night side. A soft glint marks the sea where the sun is nearly overhead.
+2. **Cells.** Once per character cell, it projects the cell onto the turning body, reads the map or draws the body from numbers, and works out the light.
 3. **Picture.** For each pixel, it reads its cell and the glyph's dot.
 
-Cells are a fixed 9 × 13.5 points, and each pixel works out its own glyph dot, so there are no seams. The hook works out the point where the sun is overhead from the clock every two minutes, and the shader eases toward it.
+Cells are a fixed 9 × 13.5 points, and each pixel works out its own glyph dot, so there are no seams. The Sun and Saturn have no map: they are drawn from noise, a band table, and the rings' radial profile.
 
-## Rebuilding the data
+## Building
 
-`hooks/scene.ts` and the `@generated` block of `hooks/earth.shader.ts` are committed, so installing needs no build. To rebuild them, put these files in `data/` (all public domain):
+Everything in `plugins/` is generated by `tools/build.mjs` from `src/`, and committed, so installing needs no build.
+
+The build copies the shared pieces into each mod, because a mod can't import files from outside its own folder:
+- `src/body.shader.ts`, with `// #if` blocks per body;
+- `src/register.tsx`, `src/week.tsx`, `src/sun.ts`, and the theme helper.
+
+The build also generates each mod's SVG from these files in `data/` (all public domain):
 
 | File | Source |
 | --- | --- |
 | `ne_50m_land/ne_50m_land.shp` | [Natural Earth 1:50m land](https://www.naturalearthdata.com/downloads/50m-physical-vectors/), unzipped |
 | `bluemarble-2048.png` | NASA Blue Marble, a 2048 × 1024 equirectangular colour map |
-| `BlackMarble_2016_global_7km.png` | [NASA Earth at Night 2016](https://earthobservatory.nasa.gov/features/NightLights), the 5760 × 3240 global map; the script crops its caption strip |
+| `BlackMarble_2016_global_7km.png` | [NASA Earth at Night 2016](https://earthobservatory.nasa.gov/features/NightLights), the 5760 × 3240 global map; the build crops its caption strip |
+| `lroc_color_2k.jpg` | [NASA SVS CGI Moon Kit](https://svs.gsfc.nasa.gov/4720) (LRO) |
+| `mars_viking_clrmosaic_global_1024.jpg` | [USGS Mars Viking colour mosaic](https://astrogeology.usgs.gov/search/map/mars_viking_global_color_mosaic_925m) |
+| `PIA17386.jpg` | [NASA MESSENGER enhanced-colour Mercury map](https://science.nasa.gov/photojournal/enhanced-color-mercury-map/); the build re-centres it and mutes its false colour to grey-brown |
+| `PIA07782.jpg` | [NASA Cassini cylindrical map of Jupiter](https://science.nasa.gov/photojournal/cassinis-best-maps-of-jupiter-cylindrical-map/) |
 
 Then run:
 
@@ -63,19 +92,21 @@ npm install
 npm run build
 ```
 
-You can also pass the data folder as an argument: `node tools/build-earth-data.mjs <folder>`.
+You can also pass the data folder: `node tools/build.mjs <folder>`.
 
-The script checks a few known places before it writes anything:
-- the Amazon is green;
-- the mid-Atlantic is sea;
-- Greenland is white;
-- the Sahara is tan;
-- New York is lit;
-- Antarctica and the open Pacific are dark.
+The build stops if any of its checks fail:
+- **Each body's SVG** fits the app's 131,072-character limit. The build makes a map coarser until it fits.
+- **Each body's look** passes the app's contrast check.
+- **Known places** read back right from the maps:
+  - Earth's mid-Atlantic is sea, the Amazon green, the Sahara tan, Greenland white, and New York lit;
+  - the Moon's Mare Imbrium is darker than its southern highlands;
+  - Mars's Arabia Terra is rust-red and its north polar cap bright;
+  - Mercury is muted to grey-brown;
+  - Jupiter's bands change with latitude.
 
-It also checks that the SVG stays under the app's 131,072-character cap.
+The build also writes `previews/<body>.svg`, the still pictures, to look at in a browser.
 
 ## Credits
 
-- Map data: NASA Earth Observatory (Blue Marble, Black Marble 2016) and Natural Earth. All are public domain.
-- Code: MIT licence, see `LICENSE`. The one exception is `hooks/make-colors.js` and `hooks/make-colors.d.ts`. They are Claude Code's own theme helper, copied unchanged as Claude Code's mod-authoring guide directs, and are not covered by this licence.
+- Map data: NASA (Blue Marble, Black Marble 2016, LRO, MESSENGER, Cassini), USGS Astrogeology (Viking), and Natural Earth. All are public domain.
+- Code: MIT licence, see `LICENSE`. The one exception is `src/make-colors.js` and `src/make-colors.d.ts` (and their copies in each mod). They are Claude Code's own theme helper, copied unchanged as Claude Code's mod-authoring guide directs, and are not covered by this licence.

@@ -1,0 +1,9 @@
+{
+  "name": "ascii-moon",
+  "version": "0.3.0",
+  "description": "A backdrop of the Moon drawn in ASCII glyphs, every day",
+  "author": {
+    "name": "bluetyde"
+  },
+  "license": "MIT"
+}

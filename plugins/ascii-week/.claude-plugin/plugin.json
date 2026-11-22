@@ -1,0 +1,9 @@
+{
+  "name": "ascii-week",
+  "version": "0.3.0",
+  "description": "A backdrop for each day of the week: Sun, Moon, Mars, Mercury, Jupiter, Earth, Saturn, drawn in ASCII glyphs",
+  "author": {
+    "name": "bluetyde"
+  },
+  "license": "MIT"
+}

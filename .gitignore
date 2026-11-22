@@ -1,4 +1,4 @@
 node_modules/
-tools/scene-preview.svg
-.claude-plugin/types/
 data/
+previews/
+.claude-plugin/types/
