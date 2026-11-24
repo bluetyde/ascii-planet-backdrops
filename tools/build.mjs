@@ -15,7 +15,17 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import sharp from 'sharp';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url)), ROOT = path.resolve(HERE, '..');
-const DATA = process.argv[2] ?? path.join(ROOT, 'data');
+const ARGS = process.argv.slice(2), FLAGS = ARGS.filter(a => a.startsWith('--')), POS = ARGS.filter(a => !a.startsWith('--'));
+const DATA = POS[0] ?? path.join(ROOT, 'data');
+// --preview: write previews/<body>-<style>.svg for each style below, and leave plugins/ as it is
+const PREVIEW = FLAGS.includes('--preview');
+// the look of the glyphs: dithering (a fixed 4 x 4 pattern nudges each cell up to half a step, so smooth
+// gradients don't band) and edges (where brightness jumps, a character along the edge: | / \ _ -)
+// the published look (chosen 2026-11-23): dithering + outline; inner edges stay a preview-only option
+let STYLE = { dither: true, outline: true, edges: false };
+// --animate: write previews/anim/<body>-<frame>.svg, one turn of each body (dithering + outline), for animated previews
+const ANIMATE = FLAGS.includes('--animate'), FRAMES = 24;
+let TIME = 0;   // seconds since the start, as the shader's `time`; the build itself draws at 0
 const SRC = path.join(ROOT, 'src'), OUT = path.join(ROOT, 'plugins');
 const { makeColors } = await import(pathToFileURL(path.join(SRC, 'make-colors.js')).href);
 const VERSION = JSON.parse(fs.readFileSync(path.join(ROOT, 'package.json'), 'utf8')).version;
@@ -119,6 +129,25 @@ while (ramp.length > 14) ramp.splice(Math.floor(ramp.length / 2), 1);   // the c
 console.log('ramp:', ramp.map(g => g.c).join(''));
 const starOf = c => Math.max(1, 1 + ramp.findIndex(g => g.c === c));
 const LEVELS = ramp.length;
+// the outline's characters, after the ramp in the shader's glyph table ('-' is already on the ramp)
+const OUTLINE_FONT = {
+  '|': ['..#..', '..#..', '..#..', '..#..', '..#..', '..#..', '..#..'],
+  '/': ['....#', '...#.', '...#.', '..#..', '.#...', '.#...', '#....'],
+  '\\': ['#....', '.#...', '.#...', '..#..', '...#.', '...#.', '....#'],
+  '_': ['.....', '.....', '.....', '.....', '.....', '.....', '#####'],
+};
+const outlineGlyphs = Object.entries(OUTLINE_FONT).map(([c, rows]) => {
+  let lo = 0, hi = 0;
+  rows.forEach((row, r) => [...row].forEach((p, col) => {
+    if (p !== '#') return;
+    const bit = r * 5 + col;
+    if (bit < 32) lo |= 1 << bit; else hi |= 1 << (bit - 32);
+  }));
+  return { c, lo, hi };
+});
+const GLYPH_ROWS = ['[0,0]', ...ramp.map(g => `[${g.lo},${g.hi}]`), ...outlineGlyphs.map(g => `[${g.lo},${g.hi}]`)];
+const outlineIndex = c => c === '-' ? starOf('-') : 1 + LEVELS + outlineGlyphs.findIndex(g => g.c === c);
+if (GLYPH_ROWS.length > 31) throw new Error('the cell buffer keeps a glyph as a / 31: too many glyphs');
 
 // ---------------------------------------------------------------- maps
 async function raw(file, crop) {
@@ -280,7 +309,10 @@ function mapSvg(map, base) {
 // ---------------------------------------------------------------- the still body: the shader's look, in JS, at time 0
 const smooth = (e0, e1, x) => { const t = Math.min(1, Math.max(0, (x - e0) / (e1 - e0))); return t * t * (3 - 2 * t); };
 const mixc = (a, b, t) => a.map((v, i) => v + (b[i] - v) * t);
-const level = b => 1 + Math.max(0, Math.min(LEVELS - 1, Math.floor(b * LEVELS)));
+// the 4 x 4 ordered-dither pattern (Bayer), 0 to 15
+const BAYER = [0, 8, 2, 10, 12, 4, 14, 6, 3, 11, 1, 9, 15, 7, 13, 5];
+let DITHER = 0;   // this cell's nudge, in brightness, set by stillShade
+const level = b => 1 + Math.max(0, Math.min(LEVELS - 1, Math.floor((b + DITHER) * LEVELS)));
 function starHash(x, y) { let h = Math.imul(x, 374761393) ^ Math.imul(y, 668265263); h = Math.imul(h ^ (h >>> 13), 1274126177); return ((h ^ (h >>> 16)) & 65535) / 65536; }
 function hash3(x, y, z) { let h = Math.imul(x, 374761393) ^ Math.imul(y, 668265263) ^ Math.imul(z, 1440662683); h = Math.imul(h ^ (h >>> 13), 1274126177); return ((h ^ (h >>> 16)) & 65535) / 65536; }
 function noise(px, py, pz) {
@@ -298,6 +330,8 @@ function ringAt(r) {
   return (c + b + a) * encke;
 }
 function stillShade(name, body, map, col, row, X) {
+  DITHER = STYLE.dither ? ((BAYER[(row & 3) * 4 + (col & 3)] + 0.5) / 16 - 0.5) / LEVELS : 0;
+  let edge = false;   // a cell of the body or its rings, which may take an edge character
   const has = f => body.flags.includes(f), K = { ...body.consts };
   const px = (col + 0.5) * X.CW, py = (row + 0.5) * X.CH;
   const R0 = Math.min(X.VH * 0.40, X.VW * 0.27), R = R0 * K.BODY_SCALE;
@@ -311,9 +345,10 @@ function stillShade(name, body, map, col, row, X) {
   if (r2 < 1) {
     const z = Math.sqrt(1 - r2), T = K.TILT;
     const y1 = qy * Math.cos(T) + z * Math.sin(T), z1 = z * Math.cos(T) - qy * Math.sin(T);
-    const spin = (-90 - K.LON0) * rad;
+    const spin = (-90 - K.LON0) * rad + (has('LIBRATE') ? 0.12 * Math.sin(TIME * 2 * Math.PI / 90) : has('SPIN') ? TIME * 2 * Math.PI / K.TURN : 0);
     const nx = qx * Math.cos(spin) - z1 * Math.sin(spin), nz = qx * Math.sin(spin) + z1 * Math.cos(spin);
     const lat = Math.atan2(y1, Math.hypot(nx, nz)), lon = Math.atan2(-nz, nx), limb = 0.62 + 0.38 * z;
+    edge = true;
     const l = has('BODYSUN') ? nx * s[0] + y1 * s[1] + nz * s[2] : qx * s[0] + qy * s[1] + z * s[2];
     const day = smooth(-0.06, 0.3, l), night = smooth(0.04, -0.12, l);
     if (has('EARTH')) {
@@ -334,7 +369,8 @@ function stillShade(name, body, map, col, row, X) {
         }
       }
     } else if (has('ROCK')) {
-      const c = map.pal[mapAt(lat / rad, lon / rad)], peak = Math.max(...c), hue = c.map(v => v / Math.max(peak, 0.04));
+      const lonAt = lon + (has('JUPITER') ? TIME * K.DRIFT * Math.sin(lat * 9) : 0);
+      const c = map.pal[mapAt(lat / rad, lonAt / rad)], peak = Math.max(...c), hue = c.map(v => v / Math.max(peak, 0.04));
       const tone = mixc(c.map(v => Math.min(1, v * K.BRIGHTEN)), hue, 0.25), L = Math.min(1, Math.max(0, (lum(c) - map.lumLo) / (map.lumHi - map.lumLo)));
       if (night > 0.6) { g = level(K.NIGHT_GLOW * limb * (0.5 + 0.5 * L)); color = mixc(tone, [0.55, 0.6, 0.7], 0.5).map(v => v * 0.4); }
       else { g = level(Math.min(0.8, (0.12 + 0.88 * day) * (0.18 + 0.82 * L) * limb)); color = tone.map(v => v * (0.5 + 0.5 * day)); }
@@ -350,7 +386,7 @@ function stillShade(name, body, map, col, row, X) {
       g = night > 0.7 ? level(0.05 * limb) : level(Math.min(0.75, (0.15 + 0.75 * lit) * limb));
       color = mixc(band, [0.35, 0.3, 0.22], hex * 0.7).map(v => v * (0.45 + 0.55 * lit));
     } else if (has('SUN')) {
-      const gran = noise(nx * 22, y1 * 22, nz * 22), spotN = noise(nx * 6 + 11, y1 * 6, nz * 6);
+      const gran = noise(nx * 22 + TIME * 0.03, y1 * 22, nz * 22), spotN = noise(nx * 6 + 11, y1 * 6, nz * 6 + TIME * 0.004);
       const belt = smooth(0.65, 0.3, Math.abs(lat)) * smooth(0.05, 0.15, Math.abs(lat)), spot = smooth(0.8, 0.85, spotN) * belt;
       const ld = Math.pow(z, 0.55);
       g = level(Math.min(0.95, ld * (0.62 + 0.38 * gran) * (1 - 0.75 * spot)));
@@ -371,18 +407,42 @@ function stillShade(name, body, map, col, row, X) {
     if (ring > 0.05 && (r2 >= 1 || zr > Math.sqrt(Math.max(0, 1 - r2)))) {
       const along = qx * s[0] + qy * s[1] + zr * s[2], ox = qx - along * s[0], oy = qy - along * s[1], oz = zr - along * s[2];
       const b = ring * (along < 0 && ox * ox + oy * oy + oz * oz < 1 ? 0.15 : 1);
-      g = level(Math.min(0.7, 0.08 + 0.62 * b)); color = rgb(K.RING_COLOR).map(v => v * (0.45 + 0.55 * b));
+      g = level(Math.min(0.7, 0.08 + 0.62 * b)); color = rgb(K.RING_COLOR).map(v => v * (0.45 + 0.55 * b)); edge = true;
     }
   }
-  return g ? { g, color } : null;
+  let ch;
+  if (STYLE.outline && r2 < 1 && Math.sqrt(r2) > 1 - X.CW * 1.15 / R) {
+    // the disc's own outline, from its geometry: the character follows the circle's direction at this angle (y up)
+    const a = Math.atan2(qy, qx) * 180 / Math.PI;
+    const near = t => Math.abs(((a - t + 540) % 360) - 180) <= 22.5;
+    ch = near(90) ? '-' : near(-90) ? '_' : near(0) || near(180) ? '|' : near(45) || near(-135) ? '\\' : '/';
+    color = (color ?? rgb(body.space)).map(c => Math.min(1, c * 1.2 + 0.08));
+    if (!g) g = 1;
+  }
+  return g ? { g, color, edge, ch } : null;
 }
+// how many glyph levels the brightness must jump across a cell to make an edge
+const EDGE_STEP = 4;
 function stillSvg(name, body, map) {
   const X = { VW: 1600, VH: 1000, CW: 9, CH: 14 };
   const esc = ch => ch === '&' ? '&amp;' : ch;
   let out = '';
-  for (let row = 0; row < Math.ceil(X.VH / X.CH); row++) {
-    const cells = [];
-    for (let col = 0; col < Math.ceil(X.VW / X.CW); col++) cells.push(stillShade(name, body, map, col, row, X));
+  const ROWS = Math.ceil(X.VH / X.CH), COLS = Math.ceil(X.VW / X.CW), grid = [];
+  for (let row = 0; row < ROWS; row++) { const line = []; for (let col = 0; col < COLS; col++) line.push(stillShade(name, body, map, col, row, X)); grid.push(line); }
+  if (STYLE.edges) {
+    // a second pass over the finished cells: where the glyph level jumps across a cell, draw the edge's direction
+    const v = (r, c) => { const s = grid[r]?.[c]; return s ? s.g : 0; };
+    for (let row = 0; row < ROWS; row++) for (let col = 0; col < COLS; col++) {
+      const s = grid[row][col];
+      if (!s || !s.edge || s.ch) continue;
+      const gx = v(row, col + 1) - v(row, col - 1), gy = v(row + 1, col) - v(row - 1, col);   // y runs down
+      if (Math.hypot(gx, gy) < EDGE_STEP) continue;
+      s.ch = Math.abs(gx) > 2 * Math.abs(gy) ? '|' : Math.abs(gy) > 2 * Math.abs(gx) ? (gy > 0 ? '_' : '-') : gx * gy > 0 ? '/' : '\\';
+      s.color = s.color.map(c => Math.min(1, c * 1.15 + 0.05));
+    }
+  }
+  for (let row = 0; row < ROWS; row++) {
+    const cells = grid[row];
     const first = cells.findIndex(Boolean);
     if (first < 0) continue;
     let last = cells.length - 1; while (!cells[last]) last--;
@@ -390,7 +450,7 @@ function stillSvg(name, body, map) {
     for (let col = first; col <= last; col++) {
       const s = cells[col];
       if (s && hex1(s.color) !== cur) { if (text) runs += `<tspan fill="${cur}">${text}</tspan>`; cur = hex1(s.color); text = ''; }
-      text += s ? esc(ramp[s.g - 1].c) : ' ';
+      text += s ? esc(s.ch ?? ramp[s.g - 1].c) : ' ';
     }
     runs += `<tspan fill="${cur}">${text}</tspan>`;
     out += `<text x="${first * X.CW}" y="${(row + 1) * X.CH - 3}" textLength="${(last - first + 1) * X.CW}" lengthAdjust="spacing">${runs}</text>`;
@@ -417,7 +477,9 @@ function shaderFor(name, body, map) {
   };
   const block = [
     `// written by tools/build.mjs for ${body.label}: do not edit by hand`,
-    `const GLYPH = table([${['[0,0]', ...ramp.map(g => `[${g.lo},${g.hi}]`)].join(',')}], 'int')   // ${ramp.map(g => g.c).join('')}`,
+    `const GLYPH = table([${GLYPH_ROWS.join(',')}], 'int')   // ${ramp.map(g => g.c).join('')} then the outline's ${outlineGlyphs.map(g => g.c).join(' ')}`,
+    `const GLYPH_COUNT = ${GLYPH_ROWS.length}`,
+    `const OUT_V = ${outlineIndex('|')}, OUT_S = ${outlineIndex('/')}, OUT_B = ${outlineIndex('\\')}, OUT_U = ${outlineIndex('_')}, OUT_D = ${outlineIndex('-')}   // the outline's | / \\ _ -`,
     `const LEVELS = ${LEVELS}, STAR_DOT = ${starOf('.')}, STAR_PLUS = ${starOf('+')}`,
     ...Object.entries(consts).map(([k, v]) => `const ${k} = ${tsValue(v)}`),
   ];
@@ -468,6 +530,16 @@ for (const name of WEEK) {
   const unpainted = makeColors(look).problems.filter(p => p.startsWith("Desktop won't paint"));
   assert(!unpainted.length, `${name}: the look paints${unpainted.length ? ' (' + unpainted[0] + ')' : ''}`);
   built[name] = { map, svg, look, shader: shaderFor(name, body, map) };
+  if (PREVIEW) {
+    const saved = STYLE;
+    for (const [style, set] of [['before', { dither: false, outline: false, edges: false }], ['dither', { dither: true, outline: false, edges: false }], ['outline', { dither: true, outline: true, edges: false }], ['both', { dither: true, outline: true, edges: true }]]) {
+      STYLE = set;
+      const page = `<svg xmlns="http://www.w3.org/2000/svg" width="100%" height="100%"><rect width="100%" height="100%" fill="${body.space}"/>${stillSvg(name, body, map ?? { index: [], pal: [] })}</svg>`;
+      fs.mkdirSync(path.join(ROOT, 'previews'), { recursive: true });
+      fs.writeFileSync(path.join(ROOT, 'previews', `${name}-${style}.svg`), page);
+    }
+    STYLE = saved;
+  }
 }
 
 // known places, read back from the maps as the shader reads them
@@ -487,6 +559,22 @@ for (const name of WEEK) {
   { const rows = new Set(); const m = built.jupiter.map; for (let y = 40; y < 140; y += 10) rows.add(m.index[y * m.COLS + 10]); assert(rows.size >= 4, 'Jupiter: bands change with latitude'); }
 }
 if (failed) { console.error('build stopped: a check failed'); process.exit(1); }
+if (ANIMATE) {
+  STYLE = { dither: true, outline: true, edges: false };
+  const dir = path.join(ROOT, 'previews', 'anim');
+  fs.mkdirSync(dir, { recursive: true });
+  for (const name of WEEK) {
+    const body = BODIES[name], period = body.flags.includes('LIBRATE') ? 90 : body.consts.TURN;
+    for (let k = 0; k < FRAMES; k++) {
+      TIME = k * period / FRAMES;
+      const page = `<svg xmlns="http://www.w3.org/2000/svg" width="100%" height="100%"><rect width="100%" height="100%" fill="${body.space}"/>${stillSvg(name, body, built[name].map ?? { index: [], pal: [] })}</svg>`;
+      fs.writeFileSync(path.join(dir, `${name}-${String(k).padStart(2, '0')}.svg`), page);
+    }
+  }
+  console.log(`wrote previews/anim/: ${FRAMES} frames a body over one turn; plugins/ left as it is`);
+  process.exit(0);
+}
+if (PREVIEW) { console.log('wrote previews/<body>-{before,dither,outline,both}.svg; plugins/ left as it is'); process.exit(0); }
 
 // ---------------------------------------------------------------- write the mods
 const write = (file, text) => { fs.mkdirSync(path.dirname(file), { recursive: true }); fs.writeFileSync(file, text); };

@@ -8,7 +8,7 @@
 //   picture every pixel: two texture reads, the cell and the glyph's dot.
 import {
   shader, table, buffer, picture, scene, values, vec2, vec3, vec4, int, signed,
-  floor, fract, sqrt, sin, cos, atan, abs, max, min, mix, clamp, smoothstep, dot, pow, time, size, composer, PI,
+  floor, fract, sqrt, sin, cos, atan, abs, max, min, mix, clamp, smoothstep, dot, pow, mod, time, size, composer, PI,
 } from 'claude-code/shader'
 import type { Buffer } from 'claude-code/shader'
 
@@ -18,7 +18,9 @@ const v = values({ sunX: [-1, 1], sunY: [-1, 1], sunZ: [-1, 1] })
 
 // @generated start
 // written by tools/build.mjs for Mars: do not edit by hand
-const GLYPH = table([[0,0],[134217728,0],[-2013265920,0],[458752,0],[-2009067520,0],[9078784,0],[139432064,0],[32537600,0],[156718208,0],[1914839667,6],[524752836,1],[-1096471574,2],[-2082802130,7]], 'int')   // .,-;~+=*%$#@
+const GLYPH = table([[0,0],[134217728,0],[-2013265920,0],[458752,0],[-2009067520,0],[9078784,0],[139432064,0],[32537600,0],[156718208,0],[1914839667,6],[524752836,1],[-1096471574,2],[-2082802130,7],[138547332,1],[1143087376,0],[276957249,4],[-1073741824,7]], 'int')   // .,-;~+=*%$#@ then the outline's | / \ _
+const GLYPH_COUNT = 17
+const OUT_V = 13, OUT_S = 14, OUT_B = 15, OUT_U = 16, OUT_D = 3   // the outline's | / \ _ -
 const LEVELS = 12, STAR_DOT = 1, STAR_PLUS = 6
 const TURN = 240
 const TILT = 0.3
@@ -40,7 +42,7 @@ const LUM_LO = 0.1871, LUM_HI = 0.7996
 const DOT = 1.5
 const CELL = vec2(6 * DOT, 9 * DOT)
 
-const GLYPHS: Buffer = buffer({ size: [5 * (LEVELS + 1), 7], filter: 'nearest', once: true }, p => {
+const GLYPHS: Buffer = buffer({ size: [5 * GLYPH_COUNT, 7], filter: 'nearest', once: true }, p => {
   const g = floor(p.cell.x / 5)
   const i = int((p.cell.x - g * 5) + p.cell.y * 5)
   const bits = GLYPH.at(g)
@@ -48,9 +50,13 @@ const GLYPHS: Buffer = buffer({ size: [5 * (LEVELS + 1), 7], filter: 'nearest', 
   return vec4(signed(on), 0, 0, 1)
 })
 
-function level(b: number): number {
-  return 1 + clamp(floor(b * LEVELS), 0, LEVELS - 1)
+// the step of the ramp for a brightness, nudged by this cell's dither (d) so smooth gradients mix two steps instead of banding
+function level(b: number, d: number): number {
+  return 1 + clamp(floor((b + d) * LEVELS), 0, LEVELS - 1)
 }
+
+// the 4 x 4 ordered-dither pattern (Bayer), 0 to 15
+const BAYER = table([0, 8, 2, 10, 12, 4, 14, 6, 3, 11, 1, 9, 15, 7, 13, 5], 'int')
 
 function starHash(x: number, y: number): number {
   let h = int(x) * 374761393 ^ int(y) * 668265263
@@ -78,6 +84,8 @@ function paletteColor(i: number): vec3 {
 
 const CELLS: Buffer = buffer({ scale: 1 / 6, filter: 'nearest' }, p => {
   const at = vec2((p.cell + 0.5) * CELL)
+  // this cell's dither: up to half a step either way, fixed to the cell so it never flickers
+  const dth = ((signed(BAYER.at(mod(p.cell.y, 4) * 4 + mod(p.cell.x, 4))) + 0.5) / 16 - 0.5) / LEVELS
 
   // the body right of the middle (on top in portrait), clear of the message box
   const wide = size.x > size.y * 1.1
@@ -120,10 +128,10 @@ const CELLS: Buffer = buffer({ scale: 1 / 6, filter: 'nearest' }, p => {
     const tone = vec3(mix(min(c * BRIGHTEN, vec3(1)), hue, 0.25))
     if (night > 0.6) {
       // the night side, faintly lit (earthshine on the Moon)
-      g = level(NIGHT_GLOW * limb * (0.5 + 0.5 * lumN))
+      g = level(NIGHT_GLOW * limb * (0.5 + 0.5 * lumN), dth)
       color = vec3(mix(tone, vec3(0.55, 0.6, 0.7), 0.5) * 0.4)
     } else {
-      g = level(min(0.8, (0.12 + 0.88 * day) * (0.18 + 0.82 * lumN) * limb))
+      g = level(min(0.8, (0.12 + 0.88 * day) * (0.18 + 0.82 * lumN) * limb), dth)
       color = vec3(tone * (0.5 + 0.5 * day))
     }
 
@@ -147,14 +155,25 @@ const CELLS: Buffer = buffer({ scale: 1 / 6, filter: 'nearest' }, p => {
   }
 
 
-  return vec4(color, g / 15)
+  // the disc's outline, from its geometry: the character follows the circle's direction at this angle
+  if (r2 < 1 && sqrt(r2) > 1 - CELL.x * 1.15 / R) {
+    const a = atan(q.y, q.x) * 180 / PI
+    const n90 = abs(mod(a - 90 + 540, 360) - 180) <= 22.5
+    const nm90 = abs(mod(a + 90 + 540, 360) - 180) <= 22.5
+    const n0 = abs(mod(a + 540, 360) - 180) <= 22.5 || abs(mod(a - 180 + 540, 360) - 180) <= 22.5
+    const n45 = abs(mod(a - 45 + 540, 360) - 180) <= 22.5 || abs(mod(a + 135 + 540, 360) - 180) <= 22.5
+    g = n90 ? OUT_D : nm90 ? OUT_U : n0 ? OUT_V : n45 ? OUT_B : OUT_S
+    color = vec3(min(color * 1.2 + 0.08, vec3(1)))
+  }
+
+  return vec4(color, g / 31)
 })
 
 const sky = picture(p => {
   const cell = vec2(floor(p.point / CELL))
   const dots = vec2(floor((p.point - cell * CELL) / DOT))
   const m = CELLS.at(cell)
-  const g = floor(m.a * 15 + 0.5)
+  const g = floor(m.a * 31 + 0.5)
   // the glyph's 5 x 7 bitmap, row 0 at the top, in the cell's dots 0-4 across and 1-7 down (dots run up from the bottom)
   const gx = dots.x
   const gy = 7 - dots.y

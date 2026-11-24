@@ -1,6 +1,6 @@
 {
   "name": "ascii-mars",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "A backdrop of Mars drawn in ASCII glyphs, every day",
   "author": {
     "name": "bluetyde"

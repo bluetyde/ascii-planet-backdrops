@@ -1,0 +1,548 @@
+{
+  "title": "ASCII Planet Backdrops",
+  "backronym": "Eight Claude desktop-app backdrop mods that draw the Sun, the Moon and the planets in ASCII characters.",
+  "lede": "Each mod paints one body (or one a day) slowly turning behind the conversation, drawn with text characters picked by brightness. This page shows how it works, where it stands, and previews of two proposed upgrades: dithering and edge-shaped characters.",
+  "sections": [
+    {
+      "id": "start",
+      "title": "Start here: the idea in plain words",
+      "blocks": [
+        {
+          "type": "p",
+          "text": "The Claude desktop app lets a mod draw a picture behind the chat. These mods draw a planet out of text characters, the way old terminals drew pictures: a dim spot gets a light character like `.` and a bright spot a heavy one like `@`."
+        },
+        {
+          "type": "p",
+          "text": "There are seven bodies (Sun, Moon, Mars, Mercury, Jupiter, Earth, Saturn), each as its own mod, plus a **week** mod that shows the body of the day: the Sun on Sunday through Saturn on Saturday. `/world <body>` switches by hand."
+        },
+        {
+          "type": "p",
+          "text": "The picture is drawn on the graphics card every frame. Earth is lit by the real sun for the current time and shows city lights at night; the Moon shows today's real phase."
+        },
+        {
+          "type": "note",
+          "text": "Published at [github.com/bluetyde/ascii-planet-backdrops](https://github.com/bluetyde/ascii-planet-backdrops) under the MIT licence. All map data is public domain (NASA, USGS, Natural Earth)."
+        }
+      ]
+    },
+    {
+      "id": "summary",
+      "title": "Summary",
+      "blocks": [
+        {
+          "type": "cards",
+          "items": [
+            {
+              "big": "8",
+              "label": "mods published",
+              "text": "7 single bodies + the week mod; all pass `claude plugin validate` (log, 2026-11-22)."
+            },
+            {
+              "big": "~5 ms",
+              "label": "frame time, weak GPU",
+              "text": "Validator's worst-case estimate per shader: about 1.3 ms cell pass + 3.8 ms picture pass; about 1.1 ms on fast GPUs."
+            },
+            {
+              "big": "12",
+              "label": "brightness steps",
+              "text": "The glyph ladder `.,-;~+=*%$#@`, from the build output."
+            },
+            {
+              "big": "10/10",
+              "label": "map checks passing",
+              "text": "Known places read back right (Amazon green, Mare Imbrium dark, Mars cap bright...), from `node tools/build.mjs`."
+            }
+          ]
+        },
+        {
+          "type": "p",
+          "text": "**Works:** all seven bodies drawn live and checked by the owner through `/world`; the hidden map trick; real sun and Moon phase. **Shipped in 0.4.0:** dithering + outline (the owner's pick) in every shader and still picture; inner edges remain a preview-only option."
+        }
+      ]
+    },
+    {
+      "id": "stages",
+      "title": "Stages",
+      "blocks": [
+        {
+          "type": "pipeline",
+          "items": [
+            {
+              "name": "Earth prototype",
+              "text": "First version, built on borrowed data. Retired, never committed.",
+              "tag": "killed"
+            },
+            {
+              "name": "Clean Earth",
+              "text": "Rewritten from public data only; per-cell shader; hidden index map.",
+              "tag": "done"
+            },
+            {
+              "name": "Seven bodies + week",
+              "text": "One shader template, one build, eight mods; published.",
+              "tag": "done"
+            },
+            {
+              "name": "Dithering + edges",
+              "text": "Dithering + outline ported to the shader and published as 0.4.0 on 2026-11-24.",
+              "tag": "done"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "how",
+      "title": "How a character is chosen",
+      "blocks": [
+        {
+          "type": "list",
+          "items": [
+            "**A small font.** Each character is a 5 x 7 grid of dots, drawn by hand in `tools/build.mjs`.",
+            "**Ink.** Each character's ink is how many of its 35 dots are on: `.` has 1, `@` has 21.",
+            "**The ladder.** Characters sorted by ink, one per ink amount, give 12 steps from light to heavy.",
+            "**Per cell.** The shader works out how bright each character cell should be (sunlight, the map's colour, darkening toward the edge) and picks the matching step. The cell's colour comes from the map."
+          ]
+        },
+        {
+          "type": "p",
+          "text": "Because only brightness picks the character, smooth gradients turn into rings of one character each, and outlines are never drawn on purpose. The two upgrades below address exactly that."
+        }
+      ]
+    },
+    {
+      "id": "watch",
+      "title": "Watch it turn: the chosen style",
+      "intro": "The owner picked the third column: **dithering + outline**. Each animation is one full turn of the body in that style, sped up to 3.6 seconds (24 frames, 0.15 s each). Frames come from the build's still renderer at 24 evenly spaced times (`node tools/build.mjs <data> --animate`), screenshotted in Edge and joined into animated WebP.",
+      "blocks": [
+        {
+          "type": "figure",
+          "src": "previews/sun-turning.webp",
+          "alt": "Sun turning, drawn with dithering and an outline",
+          "caption": "Sun. One turn of 600 s; the granulation and sunspots drift as it turns."
+        },
+        {
+          "type": "figure",
+          "src": "previews/moon-turning.webp",
+          "alt": "Moon turning, drawn with dithering and an outline",
+          "caption": "Moon. The Moon rocks (libration) over 90 s instead of spinning; the lit part is a fixed gibbous phase in this preview."
+        },
+        {
+          "type": "figure",
+          "src": "previews/mars-turning.webp",
+          "alt": "Mars turning, drawn with dithering and an outline",
+          "caption": "Mars. One turn of 240 s."
+        },
+        {
+          "type": "figure",
+          "src": "previews/mercury-turning.webp",
+          "alt": "Mercury turning, drawn with dithering and an outline",
+          "caption": "Mercury. One turn of 300 s."
+        },
+        {
+          "type": "figure",
+          "src": "previews/jupiter-turning.webp",
+          "alt": "Jupiter turning, drawn with dithering and an outline",
+          "caption": "Jupiter. One turn of 150 s; the bands also drift at different speeds by latitude."
+        },
+        {
+          "type": "figure",
+          "src": "previews/earth-turning.webp",
+          "alt": "Earth turning, drawn with dithering and an outline",
+          "caption": "Earth. One turn of 240 s; the sun is fixed to Earth here, so the day side turns with it, as in the live mod."
+        },
+        {
+          "type": "figure",
+          "src": "previews/saturn-turning.webp",
+          "alt": "Saturn turning, drawn with dithering and an outline",
+          "caption": "Saturn. One turn of 200 s; the bands look the same all the way round, so little changes but the light."
+        }
+      ]
+    },
+    {
+      "id": "previews",
+      "title": "All four styles compared",
+      "intro": "Each strip shows one body four ways, left to right: **before** (today's mods), **dithering**, **dithering + outline**, **dithering + outline + inner edges**. These are the still pictures from the build's preview mode (`node tools/build.mjs <data> --preview`), screenshotted in Edge at 640 x 640 and scaled down. The live shader would look the same apart from motion.",
+      "blocks": [
+        {
+          "type": "figure",
+          "src": "previews/sun-compare.webp",
+          "alt": "The Sun four ways",
+          "caption": "Sun. Dithering softens the rings from the darker edge; the outline traces the disc; inner edges only ring the sunspot."
+        },
+        {
+          "type": "figure",
+          "src": "previews/moon-compare.webp",
+          "alt": "The Moon four ways",
+          "caption": "Moon (still at a gibbous phase). The outline shows the whole disc, dark side included; inner edges trace the maria."
+        },
+        {
+          "type": "figure",
+          "src": "previews/mars-compare.webp",
+          "alt": "Mars four ways",
+          "caption": "Mars."
+        },
+        {
+          "type": "figure",
+          "src": "previews/mercury-compare.webp",
+          "alt": "Mercury four ways",
+          "caption": "Mercury."
+        },
+        {
+          "type": "figure",
+          "src": "previews/jupiter-compare.webp",
+          "alt": "Jupiter four ways",
+          "caption": "Jupiter. Inner edges draw lines of `_` and `-` along the band borders: the most changed of the seven."
+        },
+        {
+          "type": "figure",
+          "src": "previews/earth-compare.webp",
+          "alt": "Earth four ways",
+          "caption": "Earth. Inner edges trace the coastlines; dithering breaks up the bright band of sea around the sun's glint."
+        },
+        {
+          "type": "figure",
+          "src": "previews/saturn-compare.webp",
+          "alt": "Saturn four ways",
+          "caption": "Saturn. Inner edges fill the rings with slashes, which looks busy; dithering and the outline alone look cleaner."
+        }
+      ]
+    },
+    {
+      "id": "results",
+      "title": "Results so far",
+      "blocks": [
+        {
+          "type": "table",
+          "head": [
+            "Body",
+            "Map",
+            "Map size in the Svg",
+            "Svg characters (cap 131,072)",
+            "Live check"
+          ],
+          "rows": [
+            [
+              "Sun",
+              "none: drawn from noise",
+              "-",
+              "66,265",
+              {
+                "chip": "ok",
+                "label": "owner, 2026-11-22"
+              }
+            ],
+            [
+              "Moon",
+              "NASA LRO (SVS 4720)",
+              "240 x 120",
+              "115,196",
+              {
+                "chip": "ok",
+                "label": "owner, 2026-11-22"
+              }
+            ],
+            [
+              "Mars",
+              "USGS Viking colour mosaic",
+              "300 x 150",
+              "108,952",
+              {
+                "chip": "ok",
+                "label": "owner, 2026-11-22"
+              }
+            ],
+            [
+              "Mercury",
+              "NASA MESSENGER, muted",
+              "180 x 90",
+              "96,621",
+              {
+                "chip": "ok",
+                "label": "owner, 2026-11-22"
+              }
+            ],
+            [
+              "Jupiter",
+              "NASA Cassini PIA07782",
+              "360 x 180",
+              "98,201",
+              {
+                "chip": "ok",
+                "label": "owner, 2026-11-22"
+              }
+            ],
+            [
+              "Earth",
+              "Natural Earth + Blue Marble + Black Marble",
+              "360 x 180",
+              "100,563",
+              {
+                "chip": "ok",
+                "label": "owner, 2026-11-22"
+              }
+            ],
+            [
+              "Saturn",
+              "none: band table + rings",
+              "-",
+              "29,646",
+              {
+                "chip": "ok",
+                "label": "owner, 2026-11-22"
+              }
+            ]
+          ]
+        },
+        {
+          "type": "note",
+          "text": "Map sizes and Svg lengths are from the build output of 2026-11-22 (`node tools/build.mjs data/`). Frame times are the validator's estimates, not measured on a device."
+        }
+      ]
+    },
+    {
+      "id": "prior",
+      "title": "Prior art and references",
+      "blocks": [
+        {
+          "type": "table",
+          "head": [
+            "Work",
+            "How far it was read",
+            "What it gave"
+          ],
+          "rows": [
+            [
+              "An earlier private WebGL ASCII-universe project",
+              {
+                "chip": "info",
+                "label": "partly read"
+              },
+              "Ideas only: an Earth drawn in ASCII by brightness, and sorting characters by measured ink. No code or data; checked line by line on 2026-11-22."
+            ],
+            [
+              "Ordered (Bayer) dithering",
+              {
+                "chip": "warn",
+                "label": "from memory"
+              },
+              "The 4 x 4 nudge pattern used in the dithering preview."
+            ],
+            [
+              "Shape-matched ASCII art (characters chosen by edge direction)",
+              {
+                "chip": "warn",
+                "label": "from memory"
+              },
+              "The idea behind the edge characters `| / \\ _ -`."
+            ],
+            [
+              "Claude Code plugin-authoring guide and types",
+              {
+                "chip": "ok",
+                "label": "read in full where used"
+              },
+              "Theme, backdrop, Shader and Svg rules; the 16,384-bit and 131,072-character limits."
+            ]
+          ]
+        }
+      ]
+    },
+    {
+      "id": "risks",
+      "title": "Risks and limits",
+      "blocks": [
+        {
+          "type": "list",
+          "items": [
+            "**Edge clutter.** Inner edges help Earth's coastlines but crowd Saturn's rings and stripe Jupiter. The threshold (`EDGE_STEP = 4` glyph levels) may need to differ by body.",
+            "**Two copies clash.** A dev copy and an installed copy with the same mod name: the installed one wins, and with different names both run and the one whose day it is draws over the other. Keep one copy installed.",
+            "**Moving edges.** On a turning body, coastlines and band edges move, so their characters change as they pass. At one turn per 150 to 600 seconds this stays far below the app's flashing limit.",
+            "**Time zone.** The week mod's day uses the mod runtime's clock; if that runs in UTC, the switch happens at UTC midnight. Not yet checked."
+          ]
+        }
+      ]
+    },
+    {
+      "id": "decisions",
+      "title": "Owner decisions",
+      "blocks": [
+        {
+          "type": "table",
+          "head": [
+            "Question",
+            "Default if no answer"
+          ],
+          "rows": [
+            [
+              "Which preview to ship?",
+              "Decided 2026-11-23: dithering + outline (column 3). Inner edges are left out."
+            ],
+            [
+              "Port it to the live shaders and publish an update?",
+              "Done: version 0.4.0 pushed 2026-11-24."
+            ],
+            [
+              "Ordered (grid) or random dithering?",
+              "Ordered, as previewed."
+            ]
+          ]
+        }
+      ]
+    },
+    {
+      "id": "glossary",
+      "title": "Words used on this page",
+      "blocks": [
+        {
+          "type": "glossary",
+          "items": [
+            [
+              "Backdrop",
+              "The picture the Claude desktop app draws behind the conversation; a mod can set it."
+            ],
+            [
+              "Mod",
+              "A small plugin that changes Claude's own interface; here, one that sets a theme and draws a backdrop."
+            ],
+            [
+              "Shader",
+              "A small program run on the graphics card for every frame; it draws the moving planet."
+            ],
+            [
+              "Cell",
+              "One character's box on screen, 9 x 13.5 points, holding 6 x 9 dots."
+            ],
+            [
+              "Ink",
+              "How many of a character's 35 dots are on; more ink looks brighter."
+            ],
+            [
+              "Ramp",
+              "The ladder of characters sorted by ink, from `.` to `@`."
+            ],
+            [
+              "Dithering",
+              "Nudging each cell's brightness by a small fixed amount so neighbouring cells mix two steps instead of forming hard bands."
+            ],
+            [
+              "Edge character",
+              "A character chosen for its shape, such as `/` or `|`, placed where brightness changes sharply, along the edge's direction."
+            ],
+            [
+              "Index map",
+              "The body's map drawn in colours one or two steps off black, invisible to the eye; the shader reads each colour back as a number and looks up the real colour."
+            ],
+            [
+              "Libration",
+              "The Moon's slow wobble as seen from Earth; the Moon mod rocks instead of spinning."
+            ]
+          ]
+        }
+      ]
+    },
+    {
+      "id": "where",
+      "title": "Where things are",
+      "blocks": [
+        {
+          "type": "table",
+          "head": [
+            "Path (in the repo)",
+            "What it holds"
+          ],
+          "rows": [
+            [
+              "`src/body.shader.ts`",
+              "The shader template; `// #if` blocks per body."
+            ],
+            [
+              "`src/register.tsx`, `src/week.tsx`, `src/sun.ts`",
+              "The hook templates and the sun / Moon phase maths."
+            ],
+            [
+              "`tools/build.mjs`",
+              "Builds all eight mods; `--preview` writes the comparison pictures instead."
+            ],
+            [
+              "`plugins/ascii-*/`",
+              "The eight generated mods, each complete on its own."
+            ],
+            [
+              "`.claude-plugin/marketplace.json`",
+              "Lists the eight mods for `/plugin install`."
+            ],
+            [
+              "`docs/previews/`",
+              "The comparison strips on this page."
+            ],
+            [
+              "`docs/screenshots/`",
+              "README screenshots."
+            ],
+            [
+              "`data/` (not in the repo)",
+              "The source maps (not in the repo)."
+            ]
+          ]
+        }
+      ]
+    },
+    {
+      "id": "log",
+      "title": "Log (newest first)",
+      "blocks": [
+        {
+          "type": "log",
+          "entries": [
+            {
+              "date": "2026-11-24",
+              "status": "Dithering + outline ported to the shaders; 0.4.0 published.",
+              "body": [
+                "Changed: `src/body.shader.ts` (Bayer dither in `level`, outline from the disc angle, glyph field /31), `tools/build.mjs` (outline glyph bitmaps, dither + outline as the default), all 8 mods rebuilt at 0.4.0.",
+                "Verified: build checks pass; all 8 mods and the marketplace pass `claude plugin validate` (cell pass about 1.3 ms, picture 3.8 ms on weak GPUs); owner saw the outline live on the Moon, Mars and other bodies through a renamed dev copy.",
+                "Caveats: Earth was not seen live with the outline, because the old installed copy drew over it; its shader holds the same code as the others."
+              ]
+            },
+            {
+              "date": "2026-11-23",
+              "status": "Owner picked dithering + outline; animated previews added.",
+              "body": [
+                "Changed: `tools/build.mjs` (a `TIME` for the still renderer, matching the shader's spin, libration, Jupiter drift and Sun granulation; `--animate` flag), `docs/previews/<body>-turning.webp`, this page.",
+                "Verified: `node tools/build.mjs data/ --animate` wrote 168 frames; joined with sharp into 7 animated WebPs of 24 frames at 150 ms (Earth checked: 24 frames, 400 x 400).",
+                "Caveats: previews only; the shaders and published mods are unchanged; nothing committed."
+              ]
+            },
+            {
+              "date": "2026-11-23",
+              "status": "Previews of dithering and edge characters; this page.",
+              "body": [
+                "Changed: `tools/build.mjs` (preview styles: dithering, outline, inner edges; `--preview` flag), `docs/previews/*.webp`, `docs/overview.spec.json`, `docs/overview.html`.",
+                "Verified: `node tools/build.mjs data/ --preview` wrote 28 preview SVGs; each body screenshotted in Edge four ways.",
+                "Caveats: previews only. The shaders and published mods are unchanged; nothing committed or pushed."
+              ]
+            },
+            {
+              "date": "2026-11-22",
+              "status": "Eight mods published; README screenshots added.",
+              "body": [
+                "Changed: repo renamed `ascii-planet-backdrops`; shader template, hook templates, build script; maps for the Moon, Mars, Mercury and Jupiter downloaded with the owner's yes.",
+                "Verified: build checks 10/10; all 8 mods and the marketplace pass `claude plugin validate`; owner checked every body live via `/world`.",
+                "Caveats: week-mod midnight may be UTC; screenshot of Earth had a folder path blacked out before upload."
+              ]
+            },
+            {
+              "date": "2026-11-22",
+              "status": "Clean Earth rewrite; hidden map; cell-size fix.",
+              "body": [
+                "Changed: shader works per character cell; map moved into the Svg in near-black index colours; cells sized in points in both passes.",
+                "Verified: rendered map pixels decode to the right places in Edge; validator passes.",
+                "Caveats: the first prototype used borrowed data and was never committed."
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

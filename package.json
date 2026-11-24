@@ -1,6 +1,6 @@
 {
   "name": "ascii-planet-backdrops",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "private": true,
   "description": "Build tools for the ascii-planet-backdrops Claude desktop backdrop mods",
   "type": "module",

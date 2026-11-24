@@ -1,6 +1,6 @@
 {
   "name": "ascii-jupiter",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "A backdrop of Jupiter drawn in ASCII glyphs, every day",
   "author": {
     "name": "bluetyde"
